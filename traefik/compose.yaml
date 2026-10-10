@@ -1,0 +1,23 @@
+services:
+  traefik:
+    image: traefik:v3.7.14
+    restart: unless-stopped
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-priviliges:true"]
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./certs:/certs:ro
+    network: [edge]
+
+  whoami:
+    image: traefik/whoami
+    networks: [edge]
+
+networks:
+  edge:

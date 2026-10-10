@@ -1,0 +1,9 @@
+tls:
+  certificates:
+    - certFile: /certs/pi.home.arpa.pem
+      keyFile: /certs/pi.home.arpa-key.pem
+  options:
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true
+      

@@ -1,0 +1,30 @@
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+  
+entryPoints:
+  web:
+    address: ":8080"
+    http: 
+      redirections:
+        entryPoint:
+          to: ":443"
+          scheme: https
+  websecure:
+    address: ":8443"
+    http:
+      tls: {}
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+api:
+  dashboard: false
+
+log:
+  level: INFO
+accessLog:
+  format: json
+  

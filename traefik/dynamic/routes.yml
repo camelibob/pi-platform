@@ -1,0 +1,12 @@
+http:
+  routers:
+    whoami:
+      rule: "Host(`app.pi.home.arpa`)"
+      entryPoints: [websecure]
+      service: whoami
+  services:
+    whoami:
+      loadBalancer:
+        servers:
+          - url: "http://whoami:80"
+          
