@@ -6,4 +6,4 @@ itsdangerous==2.2.0
 Jinja2==3.1.6
 MarkupSafe==3.0.4
 Werkzeug==3.1.9
-psycopg
+psycopg==3.3.6
