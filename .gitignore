@@ -3,3 +3,4 @@
 *.key
 acme.json
 certs/
+secrets/
