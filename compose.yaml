@@ -15,8 +15,14 @@ services:
       - ./certs:/certs:ro
     networks: [edge]
 
-  whoami: # temp
-    image: traefik/whoami
+  app:
+    build: ./app
+    image: pi-platform-app:0.1.0
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     networks: [edge]
 
 networks:

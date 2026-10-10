@@ -1,12 +1,20 @@
 http:
+  middlewares:
+    ratelimit:
+      rateLimit:
+        average: 10
+        period: 1s
+        burst: 20
+
   routers:
-    whoami:
+    app:
       rule: "Host(`app.pi.home.arpa`)"
       entryPoints: [websecure]
-      service: whoami
+      service: app
+      middlewares: [ratelimit]
+
   services:
-    whoami:
+    app:
       loadBalancer:
         servers:
-          - url: "http://whoami:80"
-          
+          - url: "http://app:8000"
