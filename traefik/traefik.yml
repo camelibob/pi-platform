@@ -25,6 +25,10 @@ api:
 
 log:
   level: INFO
+
 accessLog:
+  filePath: /logs/access.log
   format: json
+
+  
   

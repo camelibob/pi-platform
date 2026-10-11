@@ -1,0 +1,14 @@
+local.file_match "traefik" {
+  path_targets = [{"__path__" = "/logs/access.log", "job" = "traefik"}]
+}
+
+loki.source.file "traefik" {
+  targets    = local.file_match.traefik.targets
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

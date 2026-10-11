@@ -5,6 +5,11 @@ http:
         average: 10
         period: 1s
         burst: 20
+    ratelimit-ui:
+      rateLimit:
+        average: 50
+        period: 1s
+        burst: 100
 
   routers:
     app:
@@ -12,9 +17,18 @@ http:
       entryPoints: [websecure]
       service: app
       middlewares: [ratelimit]
+    grafana:
+      rule: "Host(`grafana.pi.home.arpa`)"
+      entryPoints: [websecure]
+      service: grafana
+      middlewares: [ratelimit-ui]
 
   services:
     app:
       loadBalancer:
         servers:
           - url: "http://app:8000"
+    grafana:
+      loadBalancer:
+        servers:
+          - url: "http://grafana:3000"
