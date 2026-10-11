@@ -1,0 +1,66 @@
+{
+  "title": "Pi Platform - Edge Security",
+  "uid": "pi-security",
+  "schemaVersion": 39,
+  "tags": ["security", "traefik"],
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Rate-limited (429)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "refId": "A", "queryType": "instant",
+        "expr": "sum(count_over_time({job=\"traefik\"} | json | __error__=\"\" | DownstreamStatus = 429 [$__range]))" }]
+    },
+    {
+      "type": "stat",
+      "title": "Client errors (4xx)",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "refId": "A", "queryType": "instant",
+        "expr": "sum(count_over_time({job=\"traefik\"} | json | __error__=\"\" | DownstreamStatus >= 400 | DownstreamStatus < 500 [$__range]))" }]
+    },
+    {
+      "type": "stat",
+      "title": "Server errors (5xx)",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "refId": "A", "queryType": "instant",
+        "expr": "sum(count_over_time({job=\"traefik\"} | json | __error__=\"\" | DownstreamStatus >= 500 [$__range]))" }]
+    },
+    {
+      "type": "stat",
+      "title": "Sensitive path probes",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "refId": "A", "queryType": "instant",
+        "expr": "sum(count_over_time({job=\"traefik\"} | json | __error__=\"\" | RequestPath =~ `(?i).*(\\.env|\\.git|wp-admin|wp-login|phpmyadmin|\\.php).*` [$__range]))" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by status code",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "refId": "A", "queryType": "range", "legendFormat": "{{status}}",
+        "expr": "sum by (status) (count_over_time({job=\"traefik\"} | json | __error__=\"\" | label_format status=\"{{.DownstreamStatus}}\" [1m]))" }]
+    },
+    {
+      "type": "table",
+      "title": "Top 10 client IPs causing errors (>= 400)",
+      "gridPos": { "x": 0, "y": 12, "w": 10, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "refId": "A", "queryType": "instant",
+        "expr": "topk(10, sum by (ClientHost) (count_over_time({job=\"traefik\"} | json | __error__=\"\" | DownstreamStatus >= 400 [$__range])))" }]
+    },
+    {
+      "type": "logs",
+      "title": "Suspicious requests (raw)",
+      "gridPos": { "x": 10, "y": 12, "w": 14, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "refId": "A", "queryType": "range",
+        "expr": "{job=\"traefik\"} | json | __error__=\"\" | RequestPath =~ `(?i).*(\\.env|\\.git|wp-admin|wp-login|phpmyadmin|\\.php).*`" }]
+    }
+  ]
+}
