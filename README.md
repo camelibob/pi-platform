@@ -7,7 +7,7 @@ and a security-oriented log pipeline.
 
 > This is network segmentation and container hardening on a single host. It is **not** a zero-trust architecture.
 
-![Edge security dashboard](img/dashboard.png)
+![Edge security dashboard](docs/dashboard.png)
 
 ---
 
@@ -42,7 +42,7 @@ flowchart LR
 
 | Service | Networks | Published ports | Runs as |
 |---|---|---|---|
-| traefik | edge | 80, 443 (only service exposed) | UID 65534 |
+| traefik | edge | 80, 443 on the host's Tailscale IP only (only service exposed) | UID 65534 |
 | app | edge, backend | none | UID 10001 |
 | db | backend | none | `postgres` (entrypoint drops root) |
 | loki | monitoring | none | image default (non-root) |
@@ -69,6 +69,13 @@ and only Traefik access logs are centralised.
 
 **Segmentation.** PostgreSQL publishes no port and sits alone on an internal network shared only with
 the app. Traefik cannot reach it (verified below).
+
+**Published on the Tailscale address only.** The host sits on a shared campus network. Traefik's 80/443
+are bound to the address set in `TRAEFIK_BIND_ADDR` (the host's Tailscale IP), not to `0.0.0.0`, so the
+stack is unreachable from the local network and has no IPv6 listener. If the variable is unset, Compose
+falls back to `127.0.0.1`: a missing setting closes the stack instead of opening it.
+`net.ipv4.ip_nonlocal_bind = 1` lets Docker bind to that address at boot even before `tailscaled` has
+brought the interface up (verified with a full reboot).
 
 **Secrets as files, not environment variables.** The database password and the Grafana admin password
 are Compose secrets mounted under `/run/secrets/`. Environment variables leak through `docker inspect`,
@@ -133,11 +140,16 @@ chmod 644 secrets/*        # the directory is 700 on the host; containers need r
 
 # 3. Non-secret configuration
 cp .env.example .env
+# then set TRAEFIK_BIND_ADDR in .env to the host's Tailscale IP (tailscale ip -4)
 
-# 4. Traefik access-log directory (written by Traefik's UID, read by Alloy)
+# 4. Allow binding to the Tailscale IP before tailscaled is up at boot
+echo "net.ipv4.ip_nonlocal_bind = 1" | sudo tee /etc/sysctl.d/99-nonlocal-bind.conf
+sudo sysctl --system
+
+# 5. Traefik access-log directory (written by Traefik's UID, read by Alloy)
 mkdir -p logs && sudo chown 65534:65534 logs
 
-# 5. Start
+# 6. Start
 docker compose config --quiet && docker compose up -d
 docker compose ps
 ```
@@ -151,12 +163,20 @@ certificate (`rootCA.pem` from `mkcert -CAROOT`) imported as a trusted authority
 
 ## Verification
 
-Run from the host:
+Run from the host (`TS_IP` = the host's Tailscale IP, `LAN_IP` = its campus-network IP):
 
 ```bash
-# App reachable through Traefik, over HTTPS
-curl -s --resolve app.pi.home.arpa:443:127.0.0.1 https://app.pi.home.arpa/db-health
+# App reachable through Traefik, over HTTPS, on the Tailscale IP
+curl -s --resolve app.pi.home.arpa:443:$TS_IP https://app.pi.home.arpa/db-health
 # → {"db":"ok"}
+
+# Not reachable on the local network
+curl -s -m 5 -o /dev/null -w "%{http_code}\n" -k https://$LAN_IP
+# → 000
+
+# Only the Tailscale IP is listening on 80/443 (no 0.0.0.0, no [::])
+sudo ss -tlnp | grep -E ':(80|443)\b'
+# → $TS_IP:80 and $TS_IP:443 only
 
 # App runs as non-root
 docker compose exec app id
@@ -180,7 +200,7 @@ docker inspect pi-platform-db-1 --format '{{range .Config.Env}}{{println .}}{{en
 
 # Rate-limit kicks in (100 parallel requests)
 seq 1 100 | xargs -P 20 -I{} curl -s -o /dev/null -w "%{http_code}\n" \
-  --resolve app.pi.home.arpa:443:127.0.0.1 https://app.pi.home.arpa/ | sort | uniq -c
+  --resolve app.pi.home.arpa:443:$TS_IP https://app.pi.home.arpa/ | sort | uniq -c
 # → observed: 41 × 200, 59 × 429  (20-token burst + ~10 tokens/s refill over ~2 s)
 ```
 
@@ -193,11 +213,11 @@ seq 1 100 | xargs -P 20 -I{} curl -s -o /dev/null -w "%{http_code}\n" \
 - **Private CA.** Clients must trust it, and whoever holds `rootCA-key.pem` can issue certificates for
   *any* domain trusted by those clients. The key never leaves the host; on clients the CA is imported into
   a single browser rather than the system store. A public domain with ACME DNS-01 would remove this.
-- **Docker-published ports bypass `ufw`, and they listen on every interface.** Ports 80/443 are bound to
-  `0.0.0.0`, so the stack is reachable from the local network as well as from the tailnet, and the host
-  firewall does not filter them. Binding the ports to the Tailscale IP only would restrict access to the
-  tailnet, but Docker would then depend on `tailscaled` being up before it starts at boot. Not
-  implemented yet.
+- **Docker-published ports bypass `ufw`.** Exposure is controlled by binding 80/443 to the Tailscale IP,
+  not by the host firewall. Anyone on the tailnet can reach Traefik.
+- **`net.ipv4.ip_nonlocal_bind = 1` is host-wide.** Any process can bind to an address the host does not
+  hold yet. Accepted on a single-user host in exchange for a boot order that does not depend on
+  `tailscaled` starting first.
 - **App connects to PostgreSQL as the image-created superuser.** A compromised app could drop the
   database or run OS commands through `COPY ... FROM PROGRAM`. Next step: a dedicated role limited to
   the tables it needs.
@@ -215,7 +235,7 @@ seq 1 100 | xargs -P 20 -I{} curl -s -o /dev/null -w "%{http_code}\n" \
   UIDs (postgres, app, grafana) must read them. Compose file-based secrets do not support per-secret
   ownership outside Swarm.
 - **No backups** of the `db_data`, `loki_data` and `grafana_data` volumes.
-- **Loki retention is 7 days**, sized for an USB stick.
+- **Loki retention is 7 days**, sized for an SD card.
 
 ---
 

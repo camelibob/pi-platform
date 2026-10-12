@@ -7,8 +7,8 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     ports:
-      - "80:8080"
-      - "443:8443"
+      - "${TRAEFIK_BIND_ADDR:-127.0.0.1}:80:8080"
+      - "${TRAEFIK_BIND_ADDR:-127.0.0.1}:443:8443"
     volumes:
       - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./traefik/dynamic:/etc/traefik/dynamic:ro
