@@ -1,5 +1,7 @@
 # pi-platform — Hardened self-hosted microservice stack on a Raspberry Pi 5
 
+[![security](https://github.com/camelibob/pi-platform/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/camelibob/pi-platform/actions/workflows/security.yml)
+
 A small microservice platform running on a Raspberry Pi 5 (ARM64, Ubuntu) with Docker Compose.
 The goal is not feature richness but **sound defaults**: network segmentation, non-root and read-only
 containers, secrets kept out of the repository and out of container environments, edge rate-limiting,
@@ -7,7 +9,7 @@ and a security-oriented log pipeline.
 
 > This is network segmentation and container hardening on a single host. It is **not** a zero-trust architecture.
 
-![Edge security dashboard](docs/dashboard.png)
+![Edge security dashboard](img/dashboard.png)
 
 ---
 
@@ -203,6 +205,15 @@ seq 1 100 | xargs -P 20 -I{} curl -s -o /dev/null -w "%{http_code}\n" \
   --resolve app.pi.home.arpa:443:$TS_IP https://app.pi.home.arpa/ | sort | uniq -c
 # → observed: 41 × 200, 59 × 429  (20-token burst + ~10 tokens/s refill over ~2 s)
 ```
+---
+
+## CI
+
+Every push and pull request to `main` runs `.github/workflows/security.yml`:
+- **Blocking:** gitleaks over the full Git history (`fetch-depth: 0`, findings redacted in the public logs), `docker compose config` schema validation, and hadolint on `app/Dockerfile` (fails on `error`-level rules).
+- **Hardening of the pipeline itself:** read-only `GITHUB_TOKEN` (`permissions: contents: read`), every action pinned to a full commit SHA and every tool image to a digest, `persist-credentials: false`, no repository secrets, no `pull_request_target`.
+- **Verified failure:** a pull request containing a generated fake AWS key was blocked by the secret scan.
+- **Not checked:** third-party images (Traefik, PostgreSQL, Grafana…) are not scanned, since their CVEs cannot be fixed in this repository. Container image scanning (Trivy) is not implemented yet.
 
 ---
 
@@ -230,12 +241,14 @@ seq 1 100 | xargs -P 20 -I{} curl -s -o /dev/null -w "%{http_code}\n" \
   `docker logs`. `logs/access.log` is not rotated.
 - **Alloy keeps its read positions in `tmpfs`.** After a restart it re-reads the access log from the
   start; Loki drops exact duplicates.
-- **Images pinned by tag, not by digest.** A tag can be re-pushed with different content.
+- **Stack images are pinned by tag, not by digest** (the CI tool images are pinned by digest). A tag can be re-pushed with different content.
 - **Secret files are mode 644 inside a 700 directory**, because containers running under different
   UIDs (postgres, app, grafana) must read them. Compose file-based secrets do not support per-secret
   ownership outside Swarm.
 - **No backups** of the `db_data`, `loki_data` and `grafana_data` volumes.
 - **Loki retention is 7 days**, sized for an SD card.
+- **No branch protection.** A failing check does not prevent merging into `main`; a branch protection rule requiring the `security` checks would enforce it.
+- **`apt` packages are not version-pinned** (hadolint DL3008): Debian repositories only keep the latest version, so pinning would break builds on every security update. The base image is pinned instead.
 
 ---
 
@@ -251,3 +264,5 @@ seq 1 100 | xargs -P 20 -I{} curl -s -o /dev/null -w "%{http_code}\n" \
 | Python base image | 3.14-slim |
 | Flask / gunicorn | 3.1.3 / 26.2.0 (full list in `app/requirements.txt`) |
 | Docker Engine / Compose | 29.9.0 / v5.6.0 |
+| actions/checkout | v7.0.1 (SHA-pinned) |
+| gitleaks / hadolint | v8.30.1 / v2.15.1 (digest-pinned) |
